@@ -4,6 +4,7 @@ local Config = require("flash.config")
 local Labeler = require("flash.labeler")
 local Repeat = require("flash.repeat")
 local Util = require("flash.util")
+local zhh = require("flash-zhh.zhh")
 
 local M = {}
 
@@ -13,10 +14,11 @@ M.char = nil ---@type string?
 M.jumping = false
 M.state = nil ---@type Flash.State?
 M.jump_labels = false
+M.autojump = true
 
 ---@type table<Flash.Char.Motion, Flash.State.Config>
 M.motions = {
-  f = { label = { after = { 0, 0 }, before = false } },
+  f = { label = { exclude = "hjkliardc", after = { 0, 0 }, before = false } },
   t = {},
   F = {
     jump = { inclusive = false },
@@ -33,7 +35,7 @@ M.motions = {
 function M.new()
   local State = require("flash.state")
   local opts = Config.get({
-    mode = "char",
+    -- mode = "char",
     labeler = M.labeler,
     search = {
       multi_window = false,
@@ -64,6 +66,7 @@ function M.labeler(matches, state)
   else
     -- set to empty label, so that the character will just be highlighted
     for _, m in ipairs(matches) do
+      -- vim.notify(vim.inspect(m))
       m.label = ""
     end
   end
@@ -76,11 +79,23 @@ function M.mode(motion)
     c = c:gsub("\\", "\\\\")
     local pattern ---@type string
     if motion == "t" then
-      pattern = "\\m.\\ze\\V" .. c
+      if zhh.onepattern[c] == nil then
+        pattern = "\\m.\\ze" .. c
+      else
+        pattern = "\\m.\\ze" .. zhh.onepattern[c]
+      end
     elseif motion == "T" then
-      pattern = "\\V" .. c .. "\\zs\\m."
+      if zhh.onepattern[c] then
+        pattern = zhh.onepattern[c] .. "\\zs\\m."
+      else
+        pattern = "\\V" .. c .. "\\zs\\m."
+      end
     else
-      pattern = "\\V" .. c
+      if zhh.onepattern[c] then
+        pattern = zhh.onepattern[c]
+      else
+        pattern = "\\V" .. c
+      end
     end
     if not Config.get("char").multi_line then
       local pos = vim.api.nvim_win_get_cursor(0)
@@ -241,7 +256,7 @@ function M.jump(key)
   M.state:update({ force = true })
 
   if M.jump_labels then
-    if (Config.get("char").jump.autojump and #M.state.results == 1) then
+    if M.autojump and #M.state.results == 1 then
       M.state:hide()
       return M.state
     end
@@ -289,6 +304,7 @@ function M.prev()
   })
   M.current = false
   -- check if we should enable wrapping.
+  -- 如
   if not M.state.opts.search.wrap then
     local before = M.state:find({ count = 1, forward = false })
     if before and (before.pos < M.state.pos) == M.state.opts.search.forward then
